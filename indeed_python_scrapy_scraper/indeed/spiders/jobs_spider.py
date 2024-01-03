@@ -97,6 +97,18 @@ from urllib.parse import urlencode
 from scrapy.loader import ItemLoader
 # from indeed.items import IndeedItem
 from indeed_python_scrapy_scraper.indeed.items import IndeedItem
+from urllib.parse import urlencode, quote
+
+# ...
+
+def get_indeed_search_url(self, keyword, location, offset=0):
+    keyword_str = quote(keyword) if isinstance(keyword, str) else ','.join(map(quote, keyword))
+    location_str = quote(location) if isinstance(location, str) else ','.join(map(quote, location))
+
+    # Construct URL parameters with strings instead of lists
+    parameters = {"q": 'Python', "l": 'California', "filter": 0, "start": 0}
+    url = "https://www.indeed.com/jobs?" + urlencode(parameters)
+
 
 
 
