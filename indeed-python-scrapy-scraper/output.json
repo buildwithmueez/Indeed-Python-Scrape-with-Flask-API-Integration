@@ -1,0 +1,59 @@
+[
+  {
+    "position": [14],
+    "jobkey": ["422737681ab08174"],
+    "benefits": [
+      "401(k)",
+      "Dental insurance",
+      "Employee assistance program",
+      "Health insurance",
+      "Life insurance",
+      "Paid time off",
+      "Pet insurance"
+    ],
+    "location": ["Austin, TX", "Remote"]
+  },
+  {
+    "position": [13],
+    "jobkey": ["a2a8cbd917cbf446"],
+    "location": ["Irving, TX"]
+  },
+  { "position": [12], "jobkey": ["84ac8c5dd9f26d40"], "location": ["Texas"] },
+  {
+    "position": [11],
+    "jobkey": ["34b57868b1995075"],
+    "salary": ["Full-time"],
+    "benefits": [
+      "401(k)",
+      "401(k) matching",
+      "Dental insurance",
+      "Disability insurance",
+      "Health insurance",
+      "Life insurance",
+      "Tuition reimbursement"
+    ],
+    "location": ["Texas", "Remote"],
+    "jobType": ["Full-time"]
+  },
+  {
+    "position": [10],
+    "jobkey": ["7c29a8e554890341"],
+    "salary": ["$54,300 - $136,500 a year", "Full-time"],
+    "benefits": [
+      "401(k)",
+      "Dental insurance",
+      "Disability insurance",
+      "Employee discount",
+      "Employee stock purchase plan",
+      "Health insurance",
+      "Life insurance"
+    ],
+    "location": ["Austin, TX", "Remote"],
+    "jobType": ["$54,300 - $136,500 a year", "Full-time"]
+  },
+  {
+    "position": [9],
+    "jobkey": ["367c5a136a6c0bc2"],
+    "location": ["Galveston, TX", "Remote"]
+  }
+]
