@@ -6,23 +6,20 @@ from multiprocessing import Process
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 from indeed_python_scrapy_scraper.indeed.spiders.jobs_spider import IndeedJobSpider
+from flask_migrate import Migrate
+
+
 
 app = Flask(__name__)
-
-# Configure the SQLALCHEMY_DATABASE_URI based on your local MySQL setup
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:@localhost/flask_scrapper_jobs'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Create the SQLAlchemy db instance without the 'engine' parameter
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 crawling_process = None  # Global variable to store the subprocess object
 
-class Job(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    location = db.Column(db.String(255))
-    keyword = db.Column(db.String(255))
-    job_id = db.Column(db.String(255))
+
+
 
 # Function to start the Scrapy process
 def start_scrapy_process(keyword, location, job_id):
@@ -42,6 +39,14 @@ def start_scrapy_process(keyword, location, job_id):
     process.start()
     process.stop()
 
+
+class Job(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    location = db.Column(db.String(255))
+    keyword = db.Column(db.String(255))
+    status = db.Column(db.String(50))  
+
+
 # Endpoint for job creation and scraping
 @app.route('/jobCreate', methods=['POST'])
 def job_create():
@@ -55,16 +60,15 @@ def job_create():
         location = data.get('location')
         keyword = data.get('keyword')
 
-        # Dummy job ID for demonstration purposes
-        job_id = '12313123'
-
         # Save job details to the database
         with app.app_context():
+            job_ids = []
             for loc, key in zip(location, keyword):
-                new_job = Job(location=loc, keyword=key, job_id=job_id)
+                new_job = Job(location=loc, keyword=key, status='started')
                 db.session.add(new_job)
+                db.session.commit()  # Commit each job individually
+                job_ids.append(new_job.id)
 
-            db.session.commit()
             print("Successfully connected to the database and saved job details.")
 
         # Terminate the existing crawling process if it exists
@@ -73,16 +77,16 @@ def job_create():
             crawling_process.join()
 
         # Run Scrapy spider programmatically in a separate process
-        crawling_process = Process(target=start_scrapy_process, args=(keyword, location, job_id))
-        print(keyword, location, job_id)
+        crawling_process = Process(target=start_scrapy_process, args=(keyword, location, job_ids))
+        print(keyword, location, job_ids)
         crawling_process.start()
 
         # ... (other logic)
 
         response = {
             'code': 200,
-            'result': 'Success! Job started and saved to the database',
-            'jobID': job_id
+            'result': 'Success! Jobs started and saved to the database',
+            'jobIDs': job_ids
         }
 
         return jsonify(response)
@@ -93,7 +97,82 @@ def job_create():
             'code': 500,
             'error': str(e)
         }
+
+        # Update job status to 'failed' in case of an error
+        with app.app_context():
+            for job_id in job_ids:
+                job = Job.query.get(job_id)
+                if job:
+                    job.status = 'failed'
+                    db.session.commit()
+
         return jsonify(error_response), 500
+
+
+
+@app.route('/getJobData', methods=['POST'])
+def get_job_data():
+    try:
+        # Get JSON data from the request
+        data = request.get_json()
+        job_id = data.get('jobID')
+
+        # Search the database for the entry with the given job ID
+        job = Job.query.filter_by(id=job_id).first()
+
+        if job:
+            # Check the status of the job
+            if job.status in ['started', 'failed']:
+                # Assuming you have some data associated with the job, modify this part accordingly
+                job_data = {
+                    'code': 200,
+                    'jobIDs': [job.id],
+                    'status': job.status,
+                    'data': []  # You can add the actual data associated with the job here
+                }
+
+                return jsonify(job_data)
+            else:
+                response = {
+                    'code': 400,
+                    'error': f"Job with ID {job_id} has an invalid status."
+                }
+                return jsonify(response), 400
+        else:
+            response = {
+                'code': 404,
+                'error': f"Job with ID {job_id} not found."
+            }
+            return jsonify(response), 404
+
+    except Exception as e:
+        # Handle any exceptions and return an error response
+        error_response = {
+            'code': 500,
+            'error': str(e)
+        }
+        return jsonify(error_response), 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Endpoint to stop the crawling job
 @app.route('/stopCrawl', methods=['POST'])
@@ -125,8 +204,6 @@ def stop_crawl():
         }
         return jsonify(error_response), 500
 
-# ... (other configurations)
-
 if __name__ == '__main__':
     # Run the application
     with app.app_context():
@@ -134,3 +211,4 @@ if __name__ == '__main__':
         db.create_all()
         print("Database tables created.")
     app.run(debug=True)
+

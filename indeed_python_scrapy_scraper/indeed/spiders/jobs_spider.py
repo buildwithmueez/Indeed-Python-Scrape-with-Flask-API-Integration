@@ -95,8 +95,8 @@ import json
 import scrapy
 from urllib.parse import urlencode
 from scrapy.loader import ItemLoader
-# from indeed.items import IndeedItem
-from indeed_python_scrapy_scraper.indeed.items import IndeedItem
+from indeed.items import IndeedItem
+# from indeed_python_scrapy_scraper.indeed.items import IndeedItem
 from urllib.parse import urlencode, quote
 
 # ...
