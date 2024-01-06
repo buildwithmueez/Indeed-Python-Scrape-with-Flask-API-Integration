@@ -1,214 +1,136 @@
-import subprocess
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import create_engine
-from multiprocessing import Process
+# scrapy_spider.py
+import scrapy
 from scrapy.crawler import CrawlerProcess
-from scrapy.utils.project import get_project_settings
-from indeed_python_scrapy_scraper.indeed.spiders.jobs_spider import IndeedJobSpider
-from flask_migrate import Migrate
+import re
+import json
+from urllib.parse import urlencode
+from scrapy.loader import ItemLoader
+
+class IndeedItem(scrapy.Item):
+    position = scrapy.Field()
+    jobkey = scrapy.Field()
+    jobTitle = scrapy.Field()
+    company = scrapy.Field()
+    jobDescription = scrapy.Field()
+    salary = scrapy.Field()
+    benefits = scrapy.Field()
+    location = scrapy.Field()
+    jobType = scrapy.Field()
+
+class MySpider(scrapy.Spider):
+    name = 'myspider'
+    # Define scraping logic, start_urls, parsing methods, etc.
+    custom_settings = {
+        'FEEDS': { 'data/%(name)s_%(time)s.csv': { 'format': 'csv',}}
+        }
 
 
+    def start_requests(self):
+        keyword_list = ['software engineer']
+        location_list = ['California']
+        for keyword in keyword_list:
+            for location in location_list:
+                indeed_jobs_url = self.get_indeed_search_url(keyword, location)
+                yield scrapy.Request(url=indeed_jobs_url, callback=self.parse_search_results, meta={'keyword': keyword, 'location': location, 'offset': 0})
+
+    def parse_search_results(self, response):
+        location = response.meta['location']
+        keyword = response.meta['keyword'] 
+        offset = response.meta['offset'] 
+        script_tag  = re.findall(r'window.mosaic.providerData\["mosaic-provider-jobcards"\]=(\{.+?\});', response.text)
+        if script_tag is not None:
+            json_blob = json.loads(script_tag[0])
+
+            ## Extract Jobs From Search Page
+            jobs_list = json_blob['metaData']['mosaicProviderJobCardsModel']['results']
+            for index, job in enumerate(jobs_list):
+                if job.get('jobkey') is not None:
+                    job_url = 'https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https%3A%2F%2Fwww.indeed.com%2Fviewjob%3Fviewtype%3Dembedded%26jk%3D' + job.get('jobkey')
+                    yield scrapy.Request(url=job_url, 
+                            callback=self.parse_job, 
+                            meta={
+                                'keyword': keyword, 
+                                'location': location, 
+                                'page': round(offset / 10) + 1 if offset > 0 else 1,
+                                'position': index,
+                                'jobKey': job.get('jobkey'),
+                            })
+
+            
+            # Paginate Through Jobs Pages
+            if offset == 0:
+                meta_data = json_blob["metaData"]["mosaicProviderJobCardsModel"]["tierSummaries"]
+                num_results = sum(category["jobCount"] for category in meta_data)
+                if num_results > 1000:
+                    num_results = 50
+                
+                for offset in range(10, num_results + 10, 10):
+                    url = self.get_indeed_search_url(keyword, location, offset)
+                    yield scrapy.Request(url=url, callback=self.parse_search_results, meta={'keyword': keyword, 'location': location, 'offset': offset})
+    
+    def parse_job(self, response):
+        location = response.meta['location']
+        keyword = response.meta['keyword'] 
+        page = response.meta['page'] 
+        position = response.meta['position'] 
+        script_tag  = re.findall(r"_initialData=(\{.+?\});", response.text)
+        if script_tag:
+            json_blob = json.loads(script_tag[0])
+            job = json_blob["jobInfoWrapperModel"]["jobInfoModel"]
+            loader = ItemLoader(item=IndeedItem(), response=response)
+            loader.add_value('position', response.meta['position'])
+            loader.add_value('jobkey', response.meta['jobKey'])
+            job_title = response.xpath('//h2[@class="jobsearch-JobInfoHeader-title"]/span/text()').get()
+            loader.add_xpath('company', '//span[@class="css-775knl e19afand0"]/a/text()')
+            loader.add_value('jobDescription', job.get('sanitizedJobDescription',''))
+            loader.add_xpath('salary', '//div[@class="css-tvvxwd ecydgvn1"]/text()')
+            loader.add_xpath('benefits', '//div[@class="css-1oelwk6 eu4oa1w0"]/div[@class="css-k3ey05 eu4oa1w0"]//li/text()')
+            loader.add_xpath('location', '//div[@data-testid="inlineHeader-companyLocation"]/div/text()')
+            loader.add_xpath('jobType', '//div[@class="css-tvvxwd ecydgvn1"]/text()')
+
+            self.logger.info(f"Loaded Item: {loader.load_item()}")
+            yield loader.load_item()
+
+
+    def get_indeed_search_url(self, keyword, location, offset=0):
+        parameters = {"q": keyword, "l": location, "filter": 0, "start": offset}
+        # print("https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=" + urlencode("https://www.indeed.com/jobs?") + urlencode(parameters))
+        return "https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https://www.indeed.com/jobs?" + urlencode(parameters)
+        # return "https://www.indeed.com/jobs?" + urlencode(parameters)
+
+
+
+
+
+# app.py
+
+from flask import Flask, render_template
+from scrapy.crawler import CrawlerRunner
+from twisted.internet import reactor
+from scrapy.utils.log import configure_logging
+# from spiders.my_spider import MySpider  # Import your Scrapy spider
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+mysqlconnector://root:@localhost/flask_scrapper_jobs'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-migrate = Migrate(app, db)
 
-crawling_process = None  # Global variable to store the subprocess object
+# Configure Scrapy crawler settings
+configure_logging()
+runner = CrawlerRunner()
 
+@app.route('/')
+def index():
+    # Run Scrapy spider when the Flask route is accessed
+    d = runner.crawl(MySpider)
+    d.addBoth(lambda _: reactor.stop())
+    reactor.run()
+    # Start the Twisted reactor to run Scrapy spider
 
+    # Read scraped data (stored in the spider) and pass it to the template
+    # scraped_data = MySpider.custom_data  # Access the scraped data from the spider
 
-
-# Function to start the Scrapy process
-def start_scrapy_process(keyword, location, job_id):
-    process = CrawlerProcess(get_project_settings())
-
-    # Set proxy settings
-    proxy_url = 'https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url='
-    process.settings.set('HTTP_PROXY', proxy_url)
-    process.settings.set('HTTPS_PROXY', proxy_url)
-
-    # Get the command used to start the spider
-    command = process.crawl(IndeedJobSpider, keyword=keyword, location=location, job_id=job_id)
-    
-    # Print the command
-    print(f"Scrapy command: {command}")
-
-    process.start()
-    process.stop()
-
-
-class Job(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    location = db.Column(db.String(255))
-    keyword = db.Column(db.String(255))
-    status = db.Column(db.String(50))  
-
-
-# Endpoint for job creation and scraping
-@app.route('/jobCreate', methods=['POST'])
-def job_create():
-    global crawling_process  # Use the global variable
-
-    try:
-        # Get JSON data from the request
-        data = request.get_json()
-
-        # Check if 'location' and 'keyword' are present in the JSON data
-        location = data.get('location')
-        keyword = data.get('keyword')
-
-        # Save job details to the database
-        with app.app_context():
-            job_ids = []
-            for loc, key in zip(location, keyword):
-                new_job = Job(location=loc, keyword=key, status='started')
-                db.session.add(new_job)
-                db.session.commit()  # Commit each job individually
-                job_ids.append(new_job.id)
-
-            print("Successfully connected to the database and saved job details.")
-
-        # Terminate the existing crawling process if it exists
-        if crawling_process and crawling_process.is_alive():
-            crawling_process.terminate()
-            crawling_process.join()
-
-        # Run Scrapy spider programmatically in a separate process
-        crawling_process = Process(target=start_scrapy_process, args=(keyword, location, job_ids))
-        print(keyword, location, job_ids)
-        crawling_process.start()
-
-        # ... (other logic)
-
-        response = {
-            'code': 200,
-            'result': 'Success! Jobs started and saved to the database',
-            'jobIDs': job_ids
-        }
-
-        return jsonify(response)
-
-    except Exception as e:
-        # Handle any exceptions and return an error response
-        error_response = {
-            'code': 500,
-            'error': str(e)
-        }
-
-        # Update job status to 'failed' in case of an error
-        with app.app_context():
-            for job_id in job_ids:
-                job = Job.query.get(job_id)
-                if job:
-                    job.status = 'failed'
-                    db.session.commit()
-
-        return jsonify(error_response), 500
-
-
-
-@app.route('/getJobData', methods=['POST'])
-def get_job_data():
-    try:
-        # Get JSON data from the request
-        data = request.get_json()
-        job_id = data.get('jobID')
-
-        # Search the database for the entry with the given job ID
-        job = Job.query.filter_by(id=job_id).first()
-
-        if job:
-            # Check the status of the job
-            if job.status in ['started', 'failed']:
-                # Assuming you have some data associated with the job, modify this part accordingly
-                job_data = {
-                    'code': 200,
-                    'jobIDs': [job.id],
-                    'status': job.status,
-                    'data': []  # You can add the actual data associated with the job here
-                }
-
-                return jsonify(job_data)
-            else:
-                response = {
-                    'code': 400,
-                    'error': f"Job with ID {job_id} has an invalid status."
-                }
-                return jsonify(response), 400
-        else:
-            response = {
-                'code': 404,
-                'error': f"Job with ID {job_id} not found."
-            }
-            return jsonify(response), 404
-
-    except Exception as e:
-        # Handle any exceptions and return an error response
-        error_response = {
-            'code': 500,
-            'error': str(e)
-        }
-        return jsonify(error_response), 500
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Endpoint to stop the crawling job
-@app.route('/stopCrawl', methods=['POST'])
-def stop_crawl():
-    global crawling_process  # Use the global variable
-
-    try:
-        # Terminate the existing crawling process if it exists
-        if crawling_process and crawling_process.is_alive():
-            crawling_process.terminate()
-            crawling_process.join()
-            response = {
-                'code': 200,
-                'result': 'Crawling job terminated successfully'
-            }
-        else:
-            response = {
-                'code': 200,
-                'result': 'No crawling job is currently running'
-            }
-
-        return jsonify(response)
-
-    except Exception as e:
-        # Handle any exceptions and return an error response
-        error_response = {
-            'code': 500,
-            'error': str(e)
-        }
-        return jsonify(error_response), 500
+    return 'hello world'
+    # print("Database tables created.")
+    # Render the template and pass the scraped data for display
+    # return render_template('index.html', scraped_data=scraped_data)
 
 if __name__ == '__main__':
-    # Run the application
-    with app.app_context():
-        # Create the database tables before running the app
-        db.create_all()
-        print("Database tables created.")
     app.run(debug=True)
-
