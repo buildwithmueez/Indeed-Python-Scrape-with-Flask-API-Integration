@@ -83,6 +83,12 @@ from twisted.internet import reactor, threads
 from scrapy.utils.log import configure_logging
 from scrapy.crawler import CrawlerRunner
 from scrapy_spider import MySpider
+import time
+import json
+import shared
+
+
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root@localhost:3306/flask_scrapper_jobs'
@@ -102,7 +108,7 @@ runner = CrawlerRunner()
 def run_crawler(keyword, location, job_id):
     try:
         print(f"Running crawler for job id {job_id}")
-        d = runner.crawl(MySpider, keyword=keyword, location=location)
+        d = runner.crawl(MySpider, keyword=keyword, location=location, job_id=job_id)
         d.addBoth(lambda _: update_job_status(job_id, 'completed'))
     except Exception as e:
         print(f"Exception during crawling: {e}")
@@ -111,15 +117,42 @@ def run_crawler(keyword, location, job_id):
 
 def update_job_status(job_id, status):
     try:
-        job_details = Job.query.get(job_id)
-        job_details.status = status
-        db.session.commit()
-        print(f"Job status updated to {status} for job id {job_id}")
-        if status == 'completed':
-            reactor.stop()
+         with app.app_context():
+            job_details = Job.query.get(job_id)
+            job_details.status = status
+            db.session.commit()
+            print(f"Job status updated to {status} for job id {job_id}")
+            if status == 'completed':
+                reactor.stop()
     except Exception as e:
         print(f"Exception when updating job status: {e}")
 
+
+def save_json_data_to_db(job_id, json_file):
+    try:
+        with app.app_context():
+            # Fetch job details from the 'jobs' table based on job_id
+            job_details = Job.query.get(job_id)
+
+            if job_details:
+                # Read the content of the JSON file
+                with open(json_file, 'r') as file:
+                    json_data = json.load(file)
+
+                # Update the 'json_data' field in the database
+                job_details.json_data = json_data
+                db.session.commit()
+                print(f'Data saved for job ID: {job_id}')
+                return True
+            else:
+                print(f'Job details not found for job ID: {job_id}')
+                return False
+    except Exception as e:
+        print(f'Error saving data to the database: {e}')
+        return False
+
+
+# Endpoints
 @app.route('/jobcreate', methods=['POST'])
 def job_create():
     try:
@@ -132,6 +165,7 @@ def job_create():
         db.session.commit()
 
         job_id = new_job.id
+        shared.job_id = job_id
         print(f"Job created with id {job_id}")
         print(f"Reactor running before starting crawler: {reactor.running}")
         threads.deferToThread(run_crawler, keyword, location, job_id)
@@ -141,11 +175,19 @@ def job_create():
             reactor.run(installSignalHandlers=0)
             
         response_data = {'status': 'success', 'job_id': job_id, 'message': f'Scraping job data for keyword: {keyword} in location: {location} started. Job entry added to the database.'}
+        json_file = f'./data/{job_id}.json'
+        save_success = save_json_data_to_db(job_id, json_file)
+
+        if save_success:
+            print('Data saved successfully!')
+        else:
+            print('Failed to save data.')
     except Exception as e:
         print(f"Exception when creating job: {e}")
         response_data = {'status': 'error', 'message': str(e)}
 
     return jsonify(response_data)
+
 
 
 @app.route('/jobget', methods=['POST'])
@@ -171,6 +213,10 @@ def job_get():
         response_data = {'status': 'error', 'message': str(e)}
 
     return jsonify(response_data)
+
+
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)

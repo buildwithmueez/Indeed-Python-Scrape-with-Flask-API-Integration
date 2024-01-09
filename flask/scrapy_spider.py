@@ -45,7 +45,7 @@
 #             jobs_list = json_blob['metaData']['mosaicProviderJobCardsModel']['results']
 #             for index, job in enumerate(jobs_list):
 #                 if job.get('jobkey') is not None:
-#                     job_url = 'https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https%3A%2F%2Fwww.indeed.com%2Fviewjob%3Fviewtype%3Dembedded%26jk%3D' + job.get('jobkey')
+#                     job_url = 'https://proxy.scrapeops.io/v1/?api_key=4c8d755c-86fb-4da2-b438-f61be22b771f&url=https%3A%2F%2Fwww.indeed.com%2Fviewjob%3Fviewtype%3Dembedded%26jk%3D' + job.get('jobkey')
 #                     yield scrapy.Request(url=job_url,
 #                                          callback=self.parse_job,
 #                                          meta={
@@ -91,7 +91,7 @@
 
 #     def get_indeed_search_url(self, keyword, location, offset=0):
 #         parameters = {"q": keyword, "l": location, "filter": 0, "start": offset}
-#         return "https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https://www.indeed.com/jobs?" + urlencode(parameters)
+#         return "https://proxy.scrapeops.io/v1/?api_key=4c8d755c-86fb-4da2-b438-f61be22b771f&url=https://www.indeed.com/jobs?" + urlencode(parameters)
 
 
 # scrapy_spider.py
@@ -103,6 +103,9 @@ from twisted.internet import reactor
 from scrapy.utils.log import configure_logging
 import re
 import json
+import shared
+
+
 
 
 class IndeedItem(scrapy.Item):
@@ -118,14 +121,17 @@ class IndeedItem(scrapy.Item):
 
 class MySpider(scrapy.Spider):
     name = 'myspider'
+    
     custom_settings = {
-        'FEEDS': {'data/%(name)s_%(time)s.json': {'format': 'json',}}
+        'FEEDS': {f'data/26.json': {'format': 'json',}}
     }
 
-    def __init__(self, keyword='software engineer', location='California', *args, **kwargs):
+    def __init__(self, keyword='software engineer', location='California', job_id=None, *args, **kwargs):
         super(MySpider, self).__init__(*args, **kwargs)
         self.keyword = keyword
         self.location = location
+        self.job_id = job_id
+
 
     def start_requests(self):
         indeed_jobs_url = self.get_indeed_search_url(self.keyword, self.location)
@@ -142,7 +148,7 @@ class MySpider(scrapy.Spider):
             jobs_list = json_blob['metaData']['mosaicProviderJobCardsModel']['results']
             for index, job in enumerate(jobs_list):
                 if job.get('jobkey') is not None:
-                    job_url = 'https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https%3A%2F%2Fwww.indeed.com%2Fviewjob%3Fviewtype%3Dembedded%26jk%3D' + job.get('jobkey')
+                    job_url = 'https://proxy.scrapeops.io/v1/?api_key=4c8d755c-86fb-4da2-b438-f61be22b771f&url=https%3A%2F%2Fwww.indeed.com%2Fviewjob%3Fviewtype%3Dembedded%26jk%3D' + job.get('jobkey')
                     yield scrapy.Request(url=job_url,
                                          callback=self.parse_job,
                                          meta={
@@ -193,4 +199,4 @@ class MySpider(scrapy.Spider):
 
     def get_indeed_search_url(self, keyword, location, offset=0):
         parameters = {"q": keyword, "l": location, "filter": 0, "start": offset}
-        return "https://proxy.scrapeops.io/v1/?api_key=2839210c-367d-4664-b2e8-2072dd6026c3&url=https://www.indeed.com/jobs?" + urlencode(parameters)
+        return "https://proxy.scrapeops.io/v1/?api_key=4c8d755c-86fb-4da2-b438-f61be22b771f&url=https://www.indeed.com/jobs?" + urlencode(parameters)
