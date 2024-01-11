@@ -86,9 +86,10 @@ from scrapy_spider import MySpider
 import time
 import json
 import shared
+import pymysql
+pymysql.install_as_MySQLdb()
 
-
-
+global job_id
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root@localhost:3306/flask_scrapper_jobs'
@@ -108,6 +109,9 @@ runner = CrawlerRunner()
 def run_crawler(keyword, location, job_id):
     try:
         print(f"Running crawler for job id {job_id}")
+        MySpider.custom_settings = {
+            'FEEDS': {f'data/{job_id}.json': {'format': 'json',}}
+        }
         d = runner.crawl(MySpider, keyword=keyword, location=location, job_id=job_id)
         d.addBoth(lambda _: update_job_status(job_id, 'completed'))
     except Exception as e:

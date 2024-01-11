@@ -106,7 +106,7 @@ import json
 import shared
 
 
-
+global job_id
 
 class IndeedItem(scrapy.Item):
     position = scrapy.Field()
@@ -121,16 +121,20 @@ class IndeedItem(scrapy.Item):
 
 class MySpider(scrapy.Spider):
     name = 'myspider'
-    
-    custom_settings = {
-        'FEEDS': {f'data/26.json': {'format': 'json',}}
-    }
+    job_id=None
+
+    """ custom_settings = {
+        'FEEDS': {f'data/{job_id}.json': {'format': 'json',}}
+    } """
+
+
 
     def __init__(self, keyword='software engineer', location='California', job_id=None, *args, **kwargs):
         super(MySpider, self).__init__(*args, **kwargs)
+        print('job id is {job_id}')
         self.keyword = keyword
         self.location = location
-        self.job_id = job_id
+        # self.job_id = job_id
 
 
     def start_requests(self):
@@ -193,7 +197,7 @@ class MySpider(scrapy.Spider):
 
             # Instead of logging the item and yielding it,
             # yield a dictionary with the job ID and the item
-            self.logger.info(f"Loaded Item: {item}")
+            # self.logger.info(f"Loaded Item: {item}")
             yield {'job_id': response.meta['jobKey'], 'data': dict(item)}
 
 
