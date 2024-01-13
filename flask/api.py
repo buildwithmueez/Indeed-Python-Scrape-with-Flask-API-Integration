@@ -104,7 +104,7 @@ class Job(db.Model):
     json_data = db.Column(db.JSON)
 
 configure_logging()
-runner = CrawlerRunner()
+
 
 def run_crawler(keyword, location, job_id):
     try:
@@ -112,6 +112,7 @@ def run_crawler(keyword, location, job_id):
         MySpider.custom_settings = {
             'FEEDS': {f'data/{job_id}.json': {'format': 'json',}}
         }
+        runner = CrawlerRunner()
         d = runner.crawl(MySpider, keyword=keyword, location=location, job_id=job_id)
         d.addBoth(lambda _: update_job_status(job_id, 'completed'))
     except Exception as e:
